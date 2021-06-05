@@ -1,0 +1,179 @@
+In summary,
+  A Ford-Kaliski password hardening step with a TwoHash/DH OPRF step, leading into
+  SPAKE2+ (Elligator Edition) with explicit key confirmation, with
+  Two-factor authentication folded into the session (and confirmation) keys, and
+  An extra client secret generated from the password and a server-provided salt only available once authentication is complete
+
+G_OPRF, G_PAKE are cyclic groups where DL is hard
+H1: string, string -> G_OPRF
+H2: string, string -> G_PAKE
+HK: G_PAKE, G_PAKE, string, string, G_PAKE, G_PAKE, string, string, string, string -> string, string, string
+H4: string, string -> string
+PBKDF: G_OPRF, string, string -> string, string, Z_|G_PAKE|
+
+Client                                                       Server
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+username <- get username from user
+pwd <- get password from user
+P = H1(pwd, instance_string)
+r <$- Z_|G_OPRF|
+P* = r P
+username, P*                                   ---->
+                                                             y <$- Z_|G_PAKE|
+                                                             Y = y G
+                                                             k <- lookup authentication salt for username
+                                                             bpwd_shared <- lookup password (shared part)
+                                                             version <- lookup authentication version for username
+                                                             tf_spec <- lookup user two-factor authentication preferences
+                                                             Y* = Y + H2(bpwd_shared, "server")
+                                               <----         k P*, Y*, version, tf_spec
+check that version is what we were expecting
+k P = r^-1 (k P*)
+bpwd_client, bpwd_shared, bpwd_augment = PBKDF(k P, version, pwd)
+x <$- Z_|G_PAKE|
+X = x G
+X* = X + H2(bpwd_shared, "client")
+Y = Y* - H2(bpwd_shared, "server")
+E_shared = x Y
+E_augment = bpwd_augment Y
+tf_desc, tf_code <- get twofactor code from user
+K_session, K_clientauth, K_serverauth = HK(X*, Y*, username, version, E_shared, E_augment, bpwd_shared, tf_spec, tf_desc, tf_code) 
+X*, tf_desc, K_clientauth                      ---->
+                                                            X = X* - H2(bpwd_shared, "client")
+                                                            E_shared = y X
+                                                            B_augment <- lookup password (verifier part)
+                                                            E_augment = y B_augment
+                                                            check that tf_desc is acceptable for the user
+                                                            tf_code <- lookup current code for user with description tf_desc (possibly one of many, repeat for each valid)
+                                                            K_session, K_clientauth, K_serverauth = HK(X*, Y*, username, version, E_shared, E_augment, bpwd_shared, tf_spec, tf_desc, tf_code)
+                                                            check that the K_clientauth pieces match (try all matching tf_codes until they do)
+                                                            s <- lookup client-use salt
+                                                            s* = AuthEnc(K_serverauth, s)
+                                               <----        s*
+s = AuthDec(K_serverauth, s*)
+K_client = H4(bpwd_client, s)
+
+                     <----------- Communicate using K_session ------------>
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Properties:
+  Strong augmented PAKE (following the OPAQUE paper, construction 1)
+    No precomputation
+    Even a MITM attacker can only get a single guess from a single connection (no dictionary attacks)
+  Gives the client access to a password derived secret that the server does not know
+  Client never learns whether the password or the two-factor code were incorrect
+    In many cases, neither does the server (it needs a doable but not trivial brute force search to distinguish)
+  Neither of the values returned by the protocol are sufficient to do a dictionary attack
+  Robustness against discrete logarithm breaks
+    Requires a discrete logarithm for every password attempt (assuming just have transcript)
+      In contrast to OPAQUE-HMQV, which needs a single discrete logarithm that unlocks a simple dictionary attack
+    Really, Diffie-Hellman, not DL
+    Add bit security of CDH to bit security (entropy in dictionary) of password
+  In case of quantmageddon (discrete logarithms are easy)
+    With just K_client and K_session
+      No dictionary attack
+      Can (trivially) get K_client and K_session
+      No replay/ability to log in later
+    With just transcript
+      Can do a dictionary attack on password and two-factor code, but must guess both simultaneously
+        However, the two factor code is only behind a cheap hash and the password hashing work can be shared between attempts with the same password
+        With short two factor codes (e.g. TOTP), this isn't much harder than a normal dictionary attack
+      No access to K_client or K_session without a dictionary attack
+      ?? No replay/ability to log in later
+        I don't have a proof, but it looks right
+    With transcript, K_client, and K_session
+      ?? Identical to the just transcript case, but can obviously have K_client and K_session
+    With MITM
+      ?? Same as with passive transcript
+        This really wants a proof
+
+Tweaks:
+  Instead of sending tf_desc in the clear, encrypt it using the rest of the parameters
+    Very tricky to get right without breaking things
+      If the (possibly false) server can confirm/deny the correctness of the decryption, they can do a dictionary attack on the password without the two-factor code
+    Want to use a non-expanding stream cipher with no authentication
+    tf_desc needs to be indistinguishable from random
+
+Implementation notes:
+  Values stored on disk
+    k
+    bpwd_shared
+    B_augment = bpwd_augment G
+    version
+    tf_spec
+    two factor secrets
+    s
+  Everything about a user should probably be looked up atomically
+    This means that all the "lookups" in the second round are really done in the first round and saved
+  Ordering the arguments to HK carefully can reduce the amount of state between calls that the server needs to keep
+    1st round: Y*, username, version, E_augment, bpwd_shared, tf_spec
+    2nd round: X*, E_shared, tf_desc, tf_code
+    State necessary:
+      State of the hash function
+      H2(bpwd_shared, "client")
+      y
+      s
+      tf_spec (i.e. what two factor codes are acceptable)
+
+Patent notes:
+  Ug. Ug. Ug. Things seem to have expired, I think?
+  Inner part (SPAKE2+EE) may be equivalent to an instantiation of PAK?
+    https://datatracker.ietf.org/ipr/1283/
+    According to Google, 5241599 is expired, but 7047408 is not
+    Seems safe after 2023?
+
+--------------------------------------------------------------------------------------
+
+## SECURITY CLAIM 1 (proven, but needs formality)
+
+If the group is CDH-hard [?? FIXME: What is actual requirement?] and the hashes are random oracles in the UC model,
+then the algorithm satisfies [?? FIXME: What does this mean, and what is the actual adversarial advantage?]
+the Strong aPAKE functionality as defined in the OPAQUE paper.
+
+### Notes
+
+Mostly (due to the variation of the Elligator Edition and the asymmetry, see below) proven as the composition of proofs given in three papers
+  "OPAQUE: An Asymmetric PAKE Protocol Secure Against Pre-Computation Attacks", section 4, by Stanislaw Jarecki, Hugo Krawczyk, and Jiayu Xu
+  "Highly-Efficient and Composable Password-Protected Secret Sharing (Or: How to Protect Your Bitcoin Wallet Online)", section 3, by Stanislaw Jarecki, Aggelos Kiayias, Hugo Krawczyk, and Jiayu Xu
+  "Simple Password-Based Encrypted Key Exchange Protocols" by Michel Abdalla and David Pointcheval
+
+See also
+  https://moderncrypto.org/mail-archive/curves/2015/000424.html
+with quote "SPAKE2-EE's advantage is that it's slightly tidier than SPAKE2 proper, because it removes the static-DH assumption."
+for information about the Elligator Edition. This also describes the application to augmentation/asymmetrization.
+
+See also "the crypto book"
+  "A Graduate Course in Applied Cryptography", section III.21.11.6, by Dan Boneh and Victor Shoup
+for information about SPAKE2+ (i.e. the augmentation/asymmetrization).
+
+## SECURITY CLAIM 2 (unproven)
+
+If passwords are randomly drawn from a known distribution $D$, and probabilistic polynomial time
+adversary in the generic group + random oracle model with access to $Q_c$ sessions with the client,
+$Q_s$ sessions with the server, and $Q_{dl}$ calls to a discrete logarithm oracle can successfully
+authenticate in one of its sessions with probability less than or equal to the sum of probabilities
+of the top
+
+\[
+Q_s +
+\begin{cases}
+0                 &\text{if } Q_{dl} = 0 \\
+Q_c + Q_{dl} - 1  &\text{if } Q_{dl} > 0
+\end{cases}
+\]
+
+most probable elements of $D$, plus a negligible function of the security parameter.
+
+### Notes
+
+In the generic group model, the best multi-discrete logarithm algorithm succeeds in time $\sqrt{np}$ where $n$ is the number of
+problems to solve and $p$ is the order of the group.
+  "Generic Hardness of the Multiple Discrete Logarithm Problem" by Aaram Yun
+
+This claim is definitely weaker than we actually want, but it captures some of the key reasons why this protocol is nice above other
+PAKE protocols. In particular, it quantifies the resistance to an elliptic curve break (though not one simultaneous with a server
+compromise, but in that case dictionary attack is still the best you can do, presumably [??!!]).
+
+Using the Elligator Edition is crucial for this guarantee, since otherwise a handful of discrete logarithms (M and N) would permanently
+break the algorithm.

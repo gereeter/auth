@@ -1,0 +1,95 @@
+General Philosophy
+  Usability imposes fundamental limits, but it is important
+    Push the security as close as you can
+  Passive attacks happen (e.g. after the fact)
+  Sweat the small stuff (but not at the expense of the big stuff)
+
+
+Priorities/Expected Attacks
+  Usability is king
+    If people don't want to use something, they won't, and security is useless
+  Defend against online attacks first
+    i.e. actually authenticate
+    Don't accidentally leak passwords
+  Defend against server compromise second
+    Most likely effective attack
+  Defend against passive attacks & cryptographic breaks third
+    The future is a scary and unknown place
+  Defend against active attacks fourth
+    TLS is pretty good - this less likely to happen
+    Could also happen on a bad (RCE) server compromise
+  Defend against active cryptographic breaks last
+    It means everything is broken and the news has gotten out
+    Relies highly on conspiracy theories
+
+
+Fundamental limitations (w/ mitigations)
+  In a webapp, the Javascript delivered by the server is trusted
+    Browser extension can warn about changed fingerprints, possibly with a whitelist
+    Use SRI everywhere
+    Use a single page application to limit new loads
+  Bootstrapping: if an attacker can break asymmetric crypto and sees /all/ encrypted communication, they have decryptions of all communication
+    Registration should be the first target for quantum-resistant algorithms
+      (and is rare enough that even the very expensive techniques can be considered)
+    Mix in entropy from out-of-band communications if possible
+    End-to-end encrypted data is still protected by the password (since this is never transmitted)
+  Without asymmetric cryptography, strength of a session is limited by strength of data entered by user
+    Encourage strong passwords
+    Mix in 2FA well
+
+
+Desirable User-Facing Features
+  User Aliases
+    Should be able to log into the same account with multiple usernames
+
+
+"FAQ"
+  Why put an OPRF in front of an already-good aPAKE?
+    This means that an online attacker isn't able to make any progress on a dictionary attack until a server breach.
+    With access to the salt, the so-called 'precomputation attack' can be done by hashing all possible passwords so that upon breach, passwords are immediately revealed.
+    It is better if all the work has to be delayed until after a breach.
+  Why use an aPAKE instead of just a KCI authenticated key exchange as suggested by OPAQUE?
+    The authenticated key exchange method suggested by OPAQUE has the client learn that they have the correct password before even sending proof or creating a session key.
+    This means that the user can check a password independently of any two-factor authentication, which greatly reduces the security benefit.
+    All of OPAQUE's security against dictionary attacks lies in the secrecy of the salt, but that salt is used fairly directly in an exponentiation oracle.
+    This means that it relies on the stronger one-more DH assumption and, probably more worryingly, any implementation issues (e.g. small subgroup confinement) and side-channels would likely be easy to exploit.
+    In contrast, for the most part, SPAKE2+'s secrets are mixed with server-generated uniformly-distributed values and/or not directly returned to the user, making exploits harder.
+    If the discrete logarithm is only partially broken (i.e. it is still expensive), a full PAKE does a much better job of protection, since every password guess requires another call to the DL oracle.
+  Why use explicit key confirmation?
+    In most cases, for the sake of UI, this is desirable anyway.
+    It is easier to reason about.
+    With 2FA, since we don't want to prompt a user for authentication when their account doesn't use it, we need to collect more information after sending in the username, requiring two flows anyway.
+    We want the client to prove its knowledge first for the sake of 2FA, but this meanas that the server needs to send the 4th message.
+  Why use an extra salt to derive the client key at the end?
+    The only other salt, provided in the OPRF, relies on much stronger cryptographic assumptions (i.e. asymmetric crypto) to remain safe.
+    This extra salt means that, with minimal assumptions that should hold even in the face of significant breakthroughs, the client key cannot be backderived to a dictionary attack
+  Why hash the two-factor code into the session key?
+    By hashing it, an attacker cannot easily intercept the code and try it themselves.
+    Generally, covering more of the transcript is a good idea to avoid malleability.
+    With broken asymmetric cryptography, a password guess cannot be checked for validity without brute-forcing the medium-entropy two-factor codes.
+  Why use an expensive KDF for deriving the session keys?
+    If an attacker somehow gets enough information to do a dictionary attack (e.g. by breaking asymmetric crypto), an expensive KDF makes the brute-force search through two-factor codes untenable.
+    Since two-factor codes can be relied upon to have reasonably high levels of entropy, the KDF doesn't need to be nearly as expensive as the password KDF.
+    At 1/1000th of the expense of the password KDF, this causes the two-factor codes to make trying a single password 1000x slower since there are around 1000000 different possible codes.
+  Why SPAKE2+?
+    It has a proof of security.
+    It seems to be free of patent problems.
+    It relies only on a group where Diffie-Hellman works.
+  Why Elligator Edition?
+    It is more efficient.
+    It has a simpler security proof and so is probably more robust.
+    It requires fewer constants.
+    We need a hash-to-point primitive anyway for the OPRF.
+  Why DH/2Hash-OPRF?
+    It is very, very simple.
+    It is recommended by the OPAQUE paper.
+    It has a proof of security using a not too unreasonable assumption.
+  Why Argon2?
+    It won the Password Hashing Competition.
+    It has configurable memory and time requirements.
+  Why Blake2?
+    It is not vulnerable to length extension attacks.
+    It is already used in Argon2, so this reduces duplicate code.
+  Why Ristretto?
+    Using an actual prime-order group massively simplifies things since we can just rely on the generic proofs.
+    It is reasonably well supported.

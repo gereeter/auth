@@ -1,0 +1,9 @@
+G_OPRF = G_PAKE = ristretto255 (eventually ristretto448)
+?? PBKDF = Argon2i
+  Consider Argon2id, especially with 2FA (makes timing attacks essentially impossible since the pause includes waiting for a human)
+?? HK = PBKDF of some form, presumably Argon2i
+  Significantly reduced parameters
+  ~1000x faster than for hashing the password
+?? Hash = (usage-prefixed) SHAKE256
+  Consider Blake2X, especially since Argon uses Blake2
+  XOF is very useful

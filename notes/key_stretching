@@ -1,0 +1,23 @@
+The scheme allows for offline key stretching done by the server with no client interaction. To add another layer of key stretching:
+- Derive `(offset, salt_key) <- KDF(B_augment, stretch history)`
+- Replace `B_augment` with `B_augment + offset G`
+- Replace `s` (the client-use salt) with `Enc(salt_key, s)`
+- Send the information about the stretching to the client when they authenticate.
+  - The client can do the same series of KDFs to receive the same `offset`s and `salt_key`s, which will result in a final correct `bpwd_augment`
+  - After receiving the client-use salt, they can undo the encryption layers to arrive at the original salt
+
+
+TODO: quantify why (and if) this remains secure
+- It seems like the encryption can just be xor, which would be very easy to manage
+- There can be no information leakage from the set of stretches (aside from possibly when the password was chosen, but that is leaked through other means)
+  - Any stretch pattern can be equally and deterministically applied to any password
+- Even with all available information, no new discrete logarithms are learned
+  - Reduction is just the subtraction of `offset`
+- No shortcuts are possible because each stage depends on the previous and hashes are basically random oracles
+- No effective tampering can be done by choosing specific hash parameters by an argument similar to Fiat-Shamir
+  - Since every hash depends on complete past history, information learned from one path is completely independent from information
+    on another path
+  - By random oracle model, no computation can be shared (different prefixes -> different functions)
+  - Playing with the end of the path is just normal brute-force search
+- Since `s` was uniformly random, so is its encryption
+  - No info can be gleaned

@@ -1,0 +1,26 @@
+One-time code consists of 3 parts:
+  Index (8 bits)
+  Client-exposed (96 bits)
+  Server-exposed (96 bits)
+
+For a given set of codes, server stores
+  What indexes are valid (256 bits)
+  The code-generation key (>= 104 bits, probably 128 bits)
+  Hashes of the client-exposed sections of every valid code
+
+In PAKE, tf_desc = index || client_exposed, tf_code = server_exposed
+To check a code:
+  Check that the index is valid
+  Check that MAC(codegen_key, index || client_exposed) == server_exposed
+  Check that H(client_exposed) is at the correct index for the database
+  Mark the index as invalid and remove the corresponding hashed client-exposed section
+
+Can encode using a 46 character bech32 string for user-side correction of manually typed errors
+  Probably wants some dashes in the middle
+
+
+Properties:
+  A server compromise is not enough to submit a valid code
+    Need preimage for a client-exposed section
+  A transcript or MITM is not enough to capture a valid code (even if the connection is reset so that the code is not invalidated
+    The client submits the server_exposed as part of a hash, so only way to get it is by guessing (or having the codegen_key)
