@@ -28,6 +28,10 @@ I believe these security properties to be provably valid, but at the moment I ha
 However, none of the underlying constructions are new cryptography, and all of them have been proven secure. The security of the composition is either proven
 to be secure or can easily be shown under the random oracle model to at least not damage security.
 
+# Status
+
+No code is implemented yet, nor are any proofs done. The underlying PAKE should be replaced with AuCPace.
+
 # Threat Model
 
 TODO: Figure out exactly how much more security we can provide for 2FA. It depends on the type of 2FA.
@@ -90,7 +94,7 @@ Aaram Yun.
 A proof of password and session key security should essentially follow as the composition of proofs given in three papers,
 - "OPAQUE: An Asymmetric PAKE Protocol Secure Against Pre-Computation Attacks", section 4, by Stanislaw Jarecki, Hugo Krawczyk, and Jiayu Xu,
 - "Highly-Efficient and Composable Password-Protected Secret Sharing (Or: How to Protect Your Bitcoin Wallet Online)", section 3, by Stanislaw Jarecki, Aggelos Kiayias, Hugo Krawczyk, and Jiayu Xu,
-- and "Simple Password-Based Encrypted Key Exchange Protocols" by Michel Abdalla and David Pointcheval,
+- and (TODO: switching to AuCPace) "Simple Password-Based Encrypted Key Exchange Protocols" by Michel Abdalla and David Pointcheval,
 which prove the security of compoosing a secure aPAKE with an OPRF, the security of the OPRF we use, and the security of the PAKE we use, respectively. Due to the random oracle assumption, adding
 extra parameters to the final key derivation step cannot harm security. Session key security implies secrecy of the salt for the user key, since it is wrapped in a strong authenticated encryption
 algorithm and will never be revealed (`ExposeSession` only returns `K_session`, not `K_serverauth`), and so using the random oracle assumption again, revealing the user key can also not harm the
@@ -108,7 +112,7 @@ for information about the Elligator Edition. This also describes the application
 In summary, we do
 - a [Ford-Kaliski password hardening](https://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.17.9502) ([doi](https://doi.org/10.1109/ENABL.2000.883724)) step built with a
   [2HashDH oblivious pseudorandom function (OPRF)](https://eprint.iacr.org/2016/144) ([doi](https://doi.org/10.1109/EuroSP.2016.30)), leading into
-- [SPAKE2+](https://crypto.stanford.edu/~dabo/cryptobook/BonehShoup_0_4.pdf#%5B%7B%22num%22%3A8949%2C%22gen%22%3A0%7D%2C%7B%22name%22%3A%22XYZ%22%7D%2C72%2C720%2Cnull%5D)
+- (TODO: switching to AuCPace) [SPAKE2+](https://crypto.stanford.edu/~dabo/cryptobook/BonehShoup_0_4.pdf#%5B%7B%22num%22%3A8949%2C%22gen%22%3A0%7D%2C%7B%22name%22%3A%22XYZ%22%7D%2C72%2C720%2Cnull%5D)
   with explicit key confirmation, with
 - two-factor authentication folded into the session (and confirmation) keys, and
 - an extra user key generated from the hashed password and a server-provided salt which is only available once authentication is complete
